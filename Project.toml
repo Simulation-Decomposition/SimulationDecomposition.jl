@@ -1,0 +1,4 @@
+name = "SimulationDecomposition"
+uuid = "d97ae246-59cb-453e-8062-981251f8f0ee"
+authors = ["Robert Moss <rmoss92@gmail.com>"]
+version = "0.1.0"
