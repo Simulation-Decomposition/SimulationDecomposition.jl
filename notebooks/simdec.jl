@@ -4,6 +4,16 @@
 using Markdown
 using InteractiveUtils
 
+# This Pluto notebook uses @bind for interactivity. When running this notebook outside of Pluto, the following 'mock version' of @bind gives bound variables a default value (instead of an error).
+macro bind(def, element)
+    quote
+        local iv = try Base.loaded_modules[Base.PkgId(Base.UUID("6e696c72-6542-2067-7265-42206c756150"), "AbstractPlutoDingetjes")].Bonds.initial_value catch; b -> missing; end
+        local el = $(esc(element))
+        global $(esc(def)) = Core.applicable(Base.get, el) ? Base.get(el) : iv(el)
+        el
+    end
+end
+
 # ╔═╡ 734fa748-4a5e-4a8e-9e4b-72b5a1dae727
 using Distributions
 
@@ -25,35 +35,24 @@ using StatsBase
 # ╔═╡ 34436834-562d-4b00-9e6c-2aa61f646926
 using LinearAlgebra
 
+# ╔═╡ d2d87e99-0a88-4228-8663-dc72aac569a7
+using PlutoUI
+
+# ╔═╡ 27282087-2e7d-4600-b830-eea3050f2d20
+md"""
+# Simulation Decomposition (SimDec)
+"""
+
 # ╔═╡ a5cbc409-0729-4368-8af1-8cd9525951fa
 data = CSV.File(open("..\\data\\data_engineering.csv"))
 
 # ╔═╡ 955b1d3e-9358-4b54-85d7-deb07d6fa27c
 target = data[:Distance];
 
-# ╔═╡ e13ef85d-76a2-4f1e-8ef8-4451fc93945d
-bins = range(minimum(target), maximum(target), step=10)
-
-# ╔═╡ d9fde1c5-9f82-4869-93fa-8c31d3e7c770
-begin
-	plot(size=(700,350), margin=2Plots.mm)
-	histogram!(target, bins=bins, normalize=:probability, label=false)
-	xlabel!("flying range (km)")
-	ylabel!("probability")
-end
-
-# ╔═╡ 4746a581-afef-42e1-b06c-21ae58bb10c9
-sc1_3 = ()
-
-# ╔═╡ 3a7ae29c-1099-4d2b-9ff6-5d5e07a3cf1e
-target
-
-# ╔═╡ f8974b9f-fbf3-482d-8f44-12dac686213d
-# sddata = [hist for sc1, bin1 -- hist for sc2, bin1 -- ... -- hist for sc9, bin1;
-# 			hist for sc1, bin2 -- hist for sc2, bin2 -- ... -- hist for sc9, bin2;]
-
-# ╔═╡ e4118fba-5655-41ca-a60f-382d9f7b1517
-groupdata = rand(50,9)
+# ╔═╡ 668c309c-53ee-48fd-808b-9fbd43be5403
+md"""
+## Colors
+"""
 
 # ╔═╡ 5c77f2d3-e14a-4f6c-a18b-bea0b4a09bbe
 blues = cgrad(["#00a3b4", "#01e7ff", "#a3f6ff"], categorical=true)
@@ -67,17 +66,295 @@ reds = cgrad(["#a20042", "#ff0066", "#ff6da8"], categorical=true)
 # ╔═╡ a59e789d-33d7-4aef-a3b8-808024670aa5
 colors = [blues... yellows... reds...];
 
-# ╔═╡ 8d4c9413-bfd7-422d-b40b-8b7434ddbe7a
-groupedbar(groupdata, bar_position=:stack, bar_width=1, label=false, c=colors)
+# ╔═╡ bde8f656-d177-43b3-899f-e2486922e5b0
+revcolors = [reverse(reds)... reverse(yellows)... reverse(blues)...];
 
-# ╔═╡ 3f7fa6e2-a884-4370-a23d-bd2aaf5a30b7
-begin
-	H = fit(Histogram, target, bins)
-	H = normalize(H, mode=:probability)
+# ╔═╡ 5b79791a-f02a-4361-84db-a24e4308d26d
+md"""
+## Conditions (scenarios)
+"""
+
+# ╔═╡ 3ae4c85b-78c5-422c-b39a-d6da4f68aed8
+mutable struct Analysis
+	target::Symbol
+	variables::Vector{Symbol}
 end
 
-# ╔═╡ 917cd577-0043-4f8c-97f9-0e77b3b5f4fa
-bar(H.weights, bar_width=1.0)
+# ╔═╡ 45ed938a-41c2-43f0-a46f-170b7f945ec6
+begin
+	variables = collect(zip(data[:Battery], data[:Motor]))
+
+	v1c1 = x->0.1 ≤ x ≤ 0.25
+	v1c2 = x->0.25 < x ≤ 0.5
+	v1c3 = x->0.5 < x ≤ 0.8
+
+	v2c1 = x->1.5 ≤ x ≤ 3.0
+	v2c2 = x->3.0 < x ≤ 10.0
+	v2c3 = x->10.0 < x ≤ 20.0
+	
+	sc1 = target[findall(xy->v1c1(xy[1]) && v2c1(xy[2]), variables)]
+	sc2 = target[findall(xy->v1c1(xy[1]) && v2c2(xy[2]), variables)]
+	sc3 = target[findall(xy->v1c1(xy[1]) && v2c3(xy[2]), variables)]
+	sc4 = target[findall(xy->v1c2(xy[1]) && v2c1(xy[2]), variables)]
+	sc5 = target[findall(xy->v1c2(xy[1]) && v2c2(xy[2]), variables)]
+	sc6 = target[findall(xy->v1c2(xy[1]) && v2c3(xy[2]), variables)]
+	sc7 = target[findall(xy->v1c3(xy[1]) && v2c1(xy[2]), variables)]
+	sc8 = target[findall(xy->v1c3(xy[1]) && v2c2(xy[2]), variables)]
+	sc9 = target[findall(xy->v1c3(xy[1]) && v2c3(xy[2]), variables)]
+end;
+
+# ╔═╡ 5ad38384-4169-423c-b9ba-c20934fb1bde
+md"""
+## Data
+"""
+
+# ╔═╡ c72d500d-b4a9-4bde-95f2-7cec843bccb7
+mutable struct SimDec
+	data
+	bins
+end
+
+# ╔═╡ cd239895-6ea1-473b-b28f-207571d9e593
+md"""
+## Visualization
+"""
+
+# ╔═╡ a9e4f007-0b2b-4022-8cf8-bf5f50e9dbde
+@bind nbins Slider(10:200, default=50, show_value=true)
+
+# ╔═╡ e13ef85d-76a2-4f1e-8ef8-4451fc93945d
+bins = range(minimum(target), maximum(target), length=nbins);
+
+# ╔═╡ bbff5122-e5ef-4f6a-9595-8dee2f7eba06
+begin
+	h1 = fit(Histogram, sc1, bins)
+	h2 = fit(Histogram, sc2, bins)
+	h3 = fit(Histogram, sc3, bins)
+	h4 = fit(Histogram, sc4, bins)
+	h5 = fit(Histogram, sc5, bins)
+	h6 = fit(Histogram, sc6, bins)
+	h7 = fit(Histogram, sc7, bins)
+	h8 = fit(Histogram, sc8, bins)
+	h9 = fit(Histogram, sc9, bins)
+	H = [h9, h8, h7, h6, h5, h4, h3, h2, h1]
+end;
+
+# ╔═╡ 20acbd9d-2ea5-4965-85d4-5829b2dff26b
+var(h9.weights) / var(target)
+
+# ╔═╡ acc3c2dc-3945-4f12-ba71-91e74fa79e2f
+
+
+# ╔═╡ 249a387a-d8da-44ba-a76e-9d54dd01d6db
+function first_order_effects(X)
+
+end
+
+# ╔═╡ a0adf9f6-8b43-4588-99fd-f3c96112d935
+md"""
+# Plotting
+"""
+
+# ╔═╡ cd045c4b-5264-465a-97e7-e323fbda815d
+function Plots.plot(simdec::SimDec;
+					title="",
+					xlabel="",
+					ylabel="probability",
+					color=revcolors,
+					linecolor=length(simdec.bins) ≥ 150 ? nothing : :black)
+	data = simdec.data
+	bins = simdec.bins
+	
+	return groupedbar(bins[1:end-1], data,
+		bar_position=:stack,
+		label=false,
+		c=color,
+		size=(700,400),
+		bar_width=bins[2]-bins[1],
+		linecolor=linecolor,
+		yformatter=yi->"$(round(yi,digits=2)) %",
+		title=title,
+		xlabel=xlabel,
+		ylabel=ylabel)
+end
+
+# ╔═╡ d9fde1c5-9f82-4869-93fa-8c31d3e7c770
+begin
+	plot(size=(700,350), margin=2Plots.mm)
+	histogram!(target, bins=bins, normalize=:probability, label=false)
+	xlabel!("flying range (km)")
+	ylabel!("probability")
+end
+
+# ╔═╡ afdefeea-88b4-4a9d-8852-9b1c6bfd994c
+md"""
+# Notes
+"""
+
+# ╔═╡ 59a06aa1-551a-4e70-bb2b-8e625b86fc28
+md"""
+- x-axis bins
+- edge color?
+- sensitivity indices (works with properly randomized data) (NOTE)
+- editable talbe (Decomposition set-up)
+- rename states
+- min/max automatic (but change threshold)
+- add/remove state (low, medium, high)
+- dropdown for 'target'
+- dropdown for 'variable' for decomposition (2 or 3 variables, sorted by influence indices)
+- checkbox 'auto' or 'manual' (nvm, pre-filled then user can edit it)
+- 
+"""
+
+# ╔═╡ c5ec4f89-455a-463d-a911-3f75f7f347ad
+md"""
+| x | y |
+| :-- | :--|
+| 10 | $(@bind y NumberField(0:100, default=20)) |
+"""
+
+# ╔═╡ cf12f890-7fc9-4dd9-b102-cdd702740bbc
+md"""
+# Debug
+"""
+
+# ╔═╡ 683ab2cb-d64c-4f43-9c73-d38cfe9945dc
+begin
+	sc1_sc3 = target[findall(x->0.1 ≤ x ≤ 0.25, data[:Battery])]
+	sc4_sc6 = target[findall(x->0.25 < x ≤ 0.5, data[:Battery])]
+	sc7_sc9 = target[findall(x->0.5 < x ≤ 0.8, data[:Battery])]
+
+	h1_h3 = normalize(fit(Histogram, sc1_sc3, bins), mode=:none)
+	h4_h6 = normalize(fit(Histogram, sc4_sc6, bins), mode=:none)
+	h7_h9 = normalize(fit(Histogram, sc7_sc9, bins), mode=:none)
+end
+
+# ╔═╡ ecdac900-0070-4781-b7d0-35c0994e4f21
+h1_h3
+
+# ╔═╡ 238041ef-067a-45a6-893c-c51721c762f9
+simdec_data3 = normalize(hcat(h7_h9.weights, h4_h6.weights, h1_h3.weights), 1) .* 100
+
+# ╔═╡ 24653554-e26a-4411-a00e-fe808d77b202
+groupedbar(simdec_data3, bar_position=:stack, bar_width=1, label=false, c=[reds[2] yellows[2] blues[2]],size=(700,400))
+
+# ╔═╡ 38f7607a-e8aa-469f-8b48-84e26eea3f3a
+bar(h1_h3.weights, bar_width=1.0, c=blues[2])
+
+# ╔═╡ 891a6912-c5f5-427f-94b7-3f0144255a2b
+bar(h4_h6.weights, bar_width=1.0, c=yellows[2])
+
+# ╔═╡ be1ed990-ec91-45cf-8290-7b6983e7968e
+bar(h7_h9.weights, bar_width=1.0, c=reds[2])
+
+# ╔═╡ 8e9de3c4-5d56-4ad4-92f5-e867e5971ddb
+md"""
+# Utilities
+"""
+
+# ╔═╡ 98dfd986-6b40-405f-ae21-e1857ea0a2dc
+percent_normalize(X) = normalize(X, 1) .* 100
+
+# ╔═╡ 1f2418d5-0d88-44fb-9971-9fe418e0a76f
+simdec_data = percent_normalize(hcat(map(h->h.weights, H)...));
+
+# ╔═╡ f941d4ac-199a-4ad5-bd8c-f653bb979301
+simdec = SimDec(simdec_data, bins);
+
+# ╔═╡ 32662992-229d-4d56-9240-51a1c24feaab
+plot(simdec; xlabel="flying range (km)")
+
+# ╔═╡ 01f4a641-7566-4207-a4e6-ddffdcfc7bbb
+rdmin(X) = round(Int, minimum(X))
+
+# ╔═╡ 89ac3bf9-ab16-4576-a978-9f51e7ace492
+rdmean(X) = round(Int, mean(X))
+
+# ╔═╡ 1acf1088-f5eb-4811-ae84-b2bd4aea1c45
+rdmax(X) = round(Int, maximum(X))
+
+# ╔═╡ 60d9c2d8-c8cf-4861-b5a4-0e5eb87ec407
+rdprob(x, X) = Int(round(length(x) / length(X) * 100, digits=0))
+
+# ╔═╡ e584fdd9-8988-4cf8-a9b5-37c99cabe7c5
+# |       |          |   |   | Output Summary | | | 
+md"""
+| Color | Scenario | Energy | Power | min | mean | max | probability |
+| :---: | :------- | :--- | :--- | --: | ---: | --: | ----------: |
+| $(blues[1]) | sc1 |          | existing   | $(rdmin(sc1)) | $(rdmean(sc1)) | $(rdmax(sc1)) | $(rdprob(sc1, target))% |
+| $(blues[2]) | sc2 | existing | under dev. | $(rdmin(sc2)) | $(rdmean(sc2)) | $(rdmax(sc2)) | $(rdprob(sc2, target))% |
+| $(blues[3]) | sc3 |          | futuristic | $(rdmin(sc3)) | $(rdmean(sc3)) | $(rdmax(sc3)) | $(rdprob(sc3, target))% |
+| $(yellows[1]) | sc4 |           | existing   | $(rdmin(sc4)) | $(rdmean(sc4)) | $(rdmax(sc4)) | $(rdprob(sc4, target))% |
+| $(yellows[2]) | sc5 | near-term possible | under dev. | $(rdmin(sc5)) | $(rdmean(sc5)) | $(rdmax(sc5)) | $(rdprob(sc5, target))% |
+| $(yellows[3]) | sc6 |           | futuristic | $(rdmin(sc6)) | $(rdmean(sc6)) | $(rdmax(sc6)) | $(rdprob(sc6, target))% |
+| $(reds[1]) | sc7 |                | existing   | $(rdmin(sc7)) | $(rdmean(sc7)) | $(rdmax(sc7)) | $(rdprob(sc7, target))% |
+| $(reds[2]) | sc8 | on the horizon | under dev. | $(rdmin(sc8)) | $(rdmean(sc8)) | $(rdmax(sc8)) | $(rdprob(sc8, target))% |
+| $(reds[3]) | sc9 |                | futuristic | $(rdmin(sc9)) | $(rdmean(sc9)) | $(rdmax(sc9)) | $(rdprob(sc9, target))% |
+"""
+
+# ╔═╡ 034004c1-6666-45d3-a804-5b7c6196d467
+begin
+	function Base.show(io::IO, mime::MIME"image/svg+xml",cs::AbstractVector{T};
+	                   max_swatches::Integer=0) where T <: TransparentColor
+	
+	    # use random id to avoid id collision when the SVG is embedded inline
+	    id = "pat_" * string(rand(UInt32), base=62)
+	    n = length(cs)
+		# NOTE: added Colors. (Moss)
+	    actual_max_swatches = max_swatches > 0 ? max_swatches : Colors.default_max_swatches
+	    # When `max_swatches` is specified, the following warning is suppressed.
+	    if max_swatches == 0 && n > actual_max_swatches
+	        trunc = n - actual_max_swatches
+	        @warn """Last $trunc swatches (of $n-element Array) are truncated."""
+	        yield()
+	    end
+	    w = min(n * Colors.max_swatch_size, Colors.max_width) # NOTE: added Colors. (Moss)
+		h = 5 # default 25 mm (NOTE: added by Moss)
+	
+		# NOTE: added Colors. (Moss)
+	    scale = n * Colors.max_swatch_size / w # 1 for square, >1 for portrait
+	    rscale = round(scale, digits=3)
+	    pat_scale = rscale == 1 ? "" : """patternTransform="scale($rscale,1)" """
+	
+	    # the following are with the assumption that scale >= 1 (i.e. not landscape)
+	    if rscale == 1
+	        shape = "0v1h-1z" # triangle
+	    else # rscale > 1
+	        simplify(x) = replace(string(round(x, digits=2)), r"^0"=>"")
+	        d1 = simplify((1 - 1 / scale) / 2)
+	        d2 = simplify((1 + 1 / scale) / 2)
+	        shape = """$(d1)V1h-1V$(d2)z""" # trapezoid
+	    end
+	    Colors.write_declaration(io, mime)
+	    write(io,
+	        """
+	        <svg xmlns="http://www.w3.org/2000/svg" version="1.1"
+	             width="$(w)mm" height="$(h)mm" viewBox="0 0 $n 1" stroke="none"
+	             preserveAspectRatio="none" shape-rendering="crispEdges">
+	        <defs>
+	            <pattern id="$id" width=".2" height=".2"
+	                     patternUnits="userSpaceOnUse" $pat_scale>
+	                <path d="M.1,0h.1v.1h-.2v.1h.1z" fill="#999" opacity=".5" />
+	            </pattern>
+	        </defs>
+	        <rect width="$n" height="1" fill="url(#$id)" />
+	        """)
+	    for (i, c) in enumerate(cs)
+	        i > actual_max_swatches && break
+	        hexc = hex(color(c))
+	        opacity = string(round(float(alpha(c)), digits=4))
+	        op = replace(opacity, r"(^0(?!\.0$))|(\.0$)"=>"")
+	        write(io,
+	            """
+	            <path d="M$i,$shape" fill="#$hexc" />
+	            <path d="M$(i-1),0h1v1h-1z" fill="#$hexc" fill-opacity="$op" />
+	            """)
+	    end
+	    write(io, "</svg>")
+	    flush(io) # return nothing
+	end
+	md"`Base.show` for `Color`"
+end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -86,6 +363,7 @@ CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
@@ -94,6 +372,7 @@ StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 CSV = "~0.10.9"
 Distributions = "~0.25.80"
 Plots = "~1.38.4"
+PlutoUI = "~0.7.50"
 StatsBase = "~0.33.21"
 StatsPlots = "~0.15.4"
 """
@@ -110,6 +389,12 @@ deps = ["ChainRulesCore", "LinearAlgebra"]
 git-tree-sha1 = "69f7020bd72f069c219b5e8c236c1fa90d2cb409"
 uuid = "621f4979-c628-5d54-868e-fcf4e3e8185c"
 version = "1.2.1"
+
+[[deps.AbstractPlutoDingetjes]]
+deps = ["Pkg"]
+git-tree-sha1 = "8eaf9f1b4921132a4cff3f36a1d9ba923b14a481"
+uuid = "6e696c72-6542-2067-7265-42206c756150"
+version = "1.1.4"
 
 [[deps.Adapt]]
 deps = ["LinearAlgebra"]
@@ -439,6 +724,24 @@ git-tree-sha1 = "709d864e3ed6e3545230601f94e11ebc65994641"
 uuid = "34004b35-14d8-5ef3-9330-4cdb6864b03a"
 version = "0.3.11"
 
+[[deps.Hyperscript]]
+deps = ["Test"]
+git-tree-sha1 = "8d511d5b81240fc8e6802386302675bdf47737b9"
+uuid = "47d2ed2b-36de-50cf-bf87-49c2cf4b8b91"
+version = "0.0.4"
+
+[[deps.HypertextLiteral]]
+deps = ["Tricks"]
+git-tree-sha1 = "c47c5fa4c5308f27ccaac35504858d8914e102f9"
+uuid = "ac1192a8-f4b3-4bfe-ba22-af5b92cd3ab2"
+version = "0.9.4"
+
+[[deps.IOCapture]]
+deps = ["Logging", "Random"]
+git-tree-sha1 = "f7be53659ab06ddc986428d3a9dcc95f6fa6705a"
+uuid = "b5f81e59-6552-4d32-b1f0-c071b021bf89"
+version = "0.2.2"
+
 [[deps.IniFile]]
 git-tree-sha1 = "f550e6e32074c939295eb5ea6de31849ac2c9625"
 uuid = "83e8ac13-25f8-5344-8a64-a9f2b223428f"
@@ -631,6 +934,11 @@ git-tree-sha1 = "cedb76b37bc5a6c702ade66be44f831fa23c681e"
 uuid = "e6f89c97-d47a-5376-807f-9c37f3926c36"
 version = "1.0.0"
 
+[[deps.MIMEs]]
+git-tree-sha1 = "65f28ad4b594aebe22157d6fac869786a255b7eb"
+uuid = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
+version = "0.1.4"
+
 [[deps.MKL_jll]]
 deps = ["Artifacts", "IntelOpenMP_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "Pkg"]
 git-tree-sha1 = "2ce8695e1e699b68702c03402672a69f54b8aca9"
@@ -797,6 +1105,12 @@ deps = ["Base64", "Contour", "Dates", "Downloads", "FFMPEG", "FixedPointNumbers"
 git-tree-sha1 = "87036ff7d1277aa624ce4d211ddd8720116f80bf"
 uuid = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 version = "1.38.4"
+
+[[deps.PlutoUI]]
+deps = ["AbstractPlutoDingetjes", "Base64", "ColorTypes", "Dates", "FixedPointNumbers", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "MIMEs", "Markdown", "Random", "Reexport", "URIs", "UUIDs"]
+git-tree-sha1 = "5bb5129fdd62a2bbbe17c2756932259acf467386"
+uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+version = "0.7.50"
 
 [[deps.PooledArrays]]
 deps = ["DataAPI", "Future"]
@@ -1023,6 +1337,11 @@ deps = ["Random", "Test"]
 git-tree-sha1 = "94f38103c984f89cf77c402f2a68dbd870f8165f"
 uuid = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
 version = "0.9.11"
+
+[[deps.Tricks]]
+git-tree-sha1 = "6bac775f2d42a611cdfcd1fb217ee719630c4175"
+uuid = "410a4b4d-49e4-4fbc-ab6d-cb71b17b3775"
+version = "0.1.6"
 
 [[deps.URIs]]
 git-tree-sha1 = "ac00576f90d8a259f2c9d823e91d1de3fd44d348"
@@ -1298,6 +1617,7 @@ version = "1.4.1+0"
 """
 
 # ╔═╡ Cell order:
+# ╟─27282087-2e7d-4600-b830-eea3050f2d20
 # ╠═da502160-a7e4-11ed-32c5-d38786d47b5e
 # ╠═734fa748-4a5e-4a8e-9e4b-72b5a1dae727
 # ╠═88b828df-188e-4458-a464-1b7052fdb562
@@ -1305,20 +1625,51 @@ version = "1.4.1+0"
 # ╠═fa511919-ed94-407c-aa8c-870392c7a7dd
 # ╠═42cd65d2-b812-4ec4-90f3-a8278c1f9545
 # ╠═34436834-562d-4b00-9e6c-2aa61f646926
+# ╠═d2d87e99-0a88-4228-8663-dc72aac569a7
 # ╠═a5cbc409-0729-4368-8af1-8cd9525951fa
 # ╠═955b1d3e-9358-4b54-85d7-deb07d6fa27c
-# ╠═e13ef85d-76a2-4f1e-8ef8-4451fc93945d
 # ╠═d9fde1c5-9f82-4869-93fa-8c31d3e7c770
-# ╠═4746a581-afef-42e1-b06c-21ae58bb10c9
-# ╠═3a7ae29c-1099-4d2b-9ff6-5d5e07a3cf1e
-# ╠═f8974b9f-fbf3-482d-8f44-12dac686213d
-# ╠═e4118fba-5655-41ca-a60f-382d9f7b1517
+# ╟─668c309c-53ee-48fd-808b-9fbd43be5403
 # ╠═5c77f2d3-e14a-4f6c-a18b-bea0b4a09bbe
 # ╠═16e073e6-96c8-46ea-a20d-4dfecc903274
 # ╠═0128821c-69fd-4d7f-a6df-c2f5db4e6366
 # ╠═a59e789d-33d7-4aef-a3b8-808024670aa5
-# ╠═8d4c9413-bfd7-422d-b40b-8b7434ddbe7a
-# ╠═3f7fa6e2-a884-4370-a23d-bd2aaf5a30b7
-# ╠═917cd577-0043-4f8c-97f9-0e77b3b5f4fa
+# ╠═bde8f656-d177-43b3-899f-e2486922e5b0
+# ╟─5b79791a-f02a-4361-84db-a24e4308d26d
+# ╠═3ae4c85b-78c5-422c-b39a-d6da4f68aed8
+# ╠═45ed938a-41c2-43f0-a46f-170b7f945ec6
+# ╠═bbff5122-e5ef-4f6a-9595-8dee2f7eba06
+# ╟─5ad38384-4169-423c-b9ba-c20934fb1bde
+# ╠═c72d500d-b4a9-4bde-95f2-7cec843bccb7
+# ╠═1f2418d5-0d88-44fb-9971-9fe418e0a76f
+# ╠═e13ef85d-76a2-4f1e-8ef8-4451fc93945d
+# ╠═f941d4ac-199a-4ad5-bd8c-f653bb979301
+# ╟─cd239895-6ea1-473b-b28f-207571d9e593
+# ╠═a9e4f007-0b2b-4022-8cf8-bf5f50e9dbde
+# ╠═32662992-229d-4d56-9240-51a1c24feaab
+# ╠═ecdac900-0070-4781-b7d0-35c0994e4f21
+# ╟─e584fdd9-8988-4cf8-a9b5-37c99cabe7c5
+# ╠═20acbd9d-2ea5-4965-85d4-5829b2dff26b
+# ╠═acc3c2dc-3945-4f12-ba71-91e74fa79e2f
+# ╠═249a387a-d8da-44ba-a76e-9d54dd01d6db
+# ╟─a0adf9f6-8b43-4588-99fd-f3c96112d935
+# ╠═cd045c4b-5264-465a-97e7-e323fbda815d
+# ╟─afdefeea-88b4-4a9d-8852-9b1c6bfd994c
+# ╠═59a06aa1-551a-4e70-bb2b-8e625b86fc28
+# ╠═c5ec4f89-455a-463d-a911-3f75f7f347ad
+# ╟─cf12f890-7fc9-4dd9-b102-cdd702740bbc
+# ╠═683ab2cb-d64c-4f43-9c73-d38cfe9945dc
+# ╠═238041ef-067a-45a6-893c-c51721c762f9
+# ╠═24653554-e26a-4411-a00e-fe808d77b202
+# ╠═38f7607a-e8aa-469f-8b48-84e26eea3f3a
+# ╠═891a6912-c5f5-427f-94b7-3f0144255a2b
+# ╠═be1ed990-ec91-45cf-8290-7b6983e7968e
+# ╟─8e9de3c4-5d56-4ad4-92f5-e867e5971ddb
+# ╠═98dfd986-6b40-405f-ae21-e1857ea0a2dc
+# ╠═01f4a641-7566-4207-a4e6-ddffdcfc7bbb
+# ╠═89ac3bf9-ab16-4576-a978-9f51e7ace492
+# ╠═1acf1088-f5eb-4811-ae84-b2bd4aea1c45
+# ╠═60d9c2d8-c8cf-4861-b5a4-0e5eb87ec407
+# ╟─034004c1-6666-45d3-a804-5b7c6196d467
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
