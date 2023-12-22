@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.19.9
+# v0.19.29
 
 using Markdown
 using InteractiveUtils
@@ -43,11 +43,11 @@ md"""
 # Simulation Decomposition (SimDec)
 """
 
-# ╔═╡ a5cbc409-0729-4368-8af1-8cd9525951fa
-data = CSV.File(open("..\\data\\data_engineering.csv"))
+# ╔═╡ d56f84c4-b554-4ac6-9374-5dbbae45d304
+load_data(filename) = CSV.File(open(filename))
 
-# ╔═╡ 955b1d3e-9358-4b54-85d7-deb07d6fa27c
-target = data[:Distance];
+# ╔═╡ a5cbc409-0729-4368-8af1-8cd9525951fa
+data = load_data("..\\data\\data_engineering.csv")
 
 # ╔═╡ 668c309c-53ee-48fd-808b-9fbd43be5403
 md"""
@@ -74,16 +74,24 @@ md"""
 ## Conditions (scenarios)
 """
 
+# ╔═╡ 4a1c8621-0dc3-41ca-a1a0-bc4b9c548a31
+import Base.Cartesian: @nloops, @nref, @ntuple
+
 # ╔═╡ 3ae4c85b-78c5-422c-b39a-d6da4f68aed8
 mutable struct Analysis
 	target::Symbol
 	variables::Vector{Symbol}
 end
 
-# ╔═╡ 45ed938a-41c2-43f0-a46f-170b7f945ec6
-begin
-	variables = collect(zip(data[:Battery], data[:Motor]))
+# ╔═╡ b6870806-a954-4f63-b4cd-0e5e72e2b908
+mutable struct States
+	values::Vector
+	histograms::Vector
+end
 
+# ╔═╡ 0e1814e3-4d80-40af-bb2b-27c260af0b38
+function select_conditions()
+	# TODO: Automatically select conditions
 	v1c1 = x->0.1 ≤ x ≤ 0.25
 	v1c2 = x->0.25 < x ≤ 0.5
 	v1c3 = x->0.5 < x ≤ 0.8
@@ -91,28 +99,40 @@ begin
 	v2c1 = x->1.5 ≤ x ≤ 3.0
 	v2c2 = x->3.0 < x ≤ 10.0
 	v2c3 = x->10.0 < x ≤ 20.0
-	
-	sc1 = target[findall(xy->v1c1(xy[1]) && v2c1(xy[2]), variables)]
-	sc2 = target[findall(xy->v1c1(xy[1]) && v2c2(xy[2]), variables)]
-	sc3 = target[findall(xy->v1c1(xy[1]) && v2c3(xy[2]), variables)]
-	sc4 = target[findall(xy->v1c2(xy[1]) && v2c1(xy[2]), variables)]
-	sc5 = target[findall(xy->v1c2(xy[1]) && v2c2(xy[2]), variables)]
-	sc6 = target[findall(xy->v1c2(xy[1]) && v2c3(xy[2]), variables)]
-	sc7 = target[findall(xy->v1c3(xy[1]) && v2c1(xy[2]), variables)]
-	sc8 = target[findall(xy->v1c3(xy[1]) && v2c2(xy[2]), variables)]
-	sc9 = target[findall(xy->v1c3(xy[1]) && v2c3(xy[2]), variables)]
-end;
+
+	conditions1 = [v1c1, v1c2, v1c3]
+	conditions2 = [v2c1, v2c2, v2c3]
+	conditions = [conditions1, conditions2]
+
+	return conditions
+end
+
+# ╔═╡ db36a029-9ed7-4dda-adbe-dc15238960c1
+function fit_histogram(data, bins, inputs::Vector{Symbol}, target)
+	variables = collect(zip([data[input] for input in inputs]...))
+	conditions = select_conditions()
+
+	values = []
+	for cond1 in conditions[1]
+		for cond2 in conditions[2]
+			sc = target[findall(xy->cond1(xy[1]) && cond2(xy[2]), variables)]
+			push!(values, sc)
+		end
+	end
+
+	histograms = []
+	for sc in values
+		h = fit(Histogram, sc, bins)
+		push!(histograms, h)
+	end
+
+	return States(values, histograms)
+end
 
 # ╔═╡ 5ad38384-4169-423c-b9ba-c20934fb1bde
 md"""
-## Data
+## SimDec struct
 """
-
-# ╔═╡ c72d500d-b4a9-4bde-95f2-7cec843bccb7
-mutable struct SimDec
-	data
-	bins
-end
 
 # ╔═╡ cd239895-6ea1-473b-b28f-207571d9e593
 md"""
@@ -122,43 +142,112 @@ md"""
 # ╔═╡ a9e4f007-0b2b-4022-8cf8-bf5f50e9dbde
 @bind nbins Slider(10:200, default=50, show_value=true)
 
-# ╔═╡ e13ef85d-76a2-4f1e-8ef8-4451fc93945d
-bins = range(minimum(target), maximum(target), length=nbins);
-
-# ╔═╡ bbff5122-e5ef-4f6a-9595-8dee2f7eba06
-begin
-	h1 = fit(Histogram, sc1, bins)
-	h2 = fit(Histogram, sc2, bins)
-	h3 = fit(Histogram, sc3, bins)
-	h4 = fit(Histogram, sc4, bins)
-	h5 = fit(Histogram, sc5, bins)
-	h6 = fit(Histogram, sc6, bins)
-	h7 = fit(Histogram, sc7, bins)
-	h8 = fit(Histogram, sc8, bins)
-	h9 = fit(Histogram, sc9, bins)
-	H = [h9, h8, h7, h6, h5, h4, h3, h2, h1]
-end;
-
-# ╔═╡ 20acbd9d-2ea5-4965-85d4-5829b2dff26b
-var(h9.weights) / var(target)
-
-# ╔═╡ acc3c2dc-3945-4f12-ba71-91e74fa79e2f
-
-
 # ╔═╡ 249a387a-d8da-44ba-a76e-9d54dd01d6db
-function first_order_effects(X)
-
-end
+function first_order_effects(X) end
 
 # ╔═╡ a0adf9f6-8b43-4588-99fd-f3c96112d935
 md"""
 # Plotting
 """
 
+# ╔═╡ afdefeea-88b4-4a9d-8852-9b1c6bfd994c
+md"""
+# Notes
+"""
+
+# ╔═╡ 59a06aa1-551a-4e70-bb2b-8e625b86fc28
+md"""
+- x-axis bins
+- edge color?
+- sensitivity indices (works with properly randomized data) (NOTE)
+- editable talbe (Decomposition set-up)
+- rename states
+- min/max automatic (but change threshold)
+- add/remove state (low, medium, high)
+- dropdown for 'target'
+- dropdown for 'variable' for decomposition (2 or 3 variables, sorted by influence indices)
+- checkbox 'auto' or 'manual' (nvm, pre-filled then user can edit it)
+"""
+
+# ╔═╡ c5ec4f89-455a-463d-a911-3f75f7f347ad
+md"""
+| x | y |
+| :-- | :--|
+| 10 | $(@bind y NumberField(0:100, default=20)) |
+"""
+
+# ╔═╡ cf12f890-7fc9-4dd9-b102-cdd702740bbc
+md"""
+# Debug
+"""
+
+# ╔═╡ 8e9de3c4-5d56-4ad4-92f5-e867e5971ddb
+md"""
+# Utilities
+"""
+
+# ╔═╡ 98dfd986-6b40-405f-ae21-e1857ea0a2dc
+percent_normalize(X) = normalize(X, 1) .* 100
+
+# ╔═╡ c72d500d-b4a9-4bde-95f2-7cec843bccb7
+begin
+	mutable struct SimDec
+		data::Matrix
+		bins::AbstractArray
+		states::States
+		target::Vector
+	end
+	
+	function SimDec(data, inputs::Vector{Symbol}, target_sym::Symbol, nbins::Int)
+		target = collect(data[target_sym])
+		bins = create_bins(target, nbins)
+		states = fit_histogram(data, bins, inputs, target)
+		hist = reverse(states.histograms)
+		simdec_data = percent_normalize(hcat(map(h->h.weights, hist)...))
+		return SimDec(simdec_data, bins, states, target)
+	end
+
+	function create_bins(target, nbins::Int)
+		return range(minimum(target), maximum(target), length=nbins)
+	end
+end
+
+# ╔═╡ f941d4ac-199a-4ad5-bd8c-f653bb979301
+simdec = SimDec(data, [:Battery, :Motor], :Distance, nbins);
+
+# ╔═╡ 20acbd9d-2ea5-4965-85d4-5829b2dff26b
+var(simdec.states.histograms[9].weights) / var(simdec.target)
+
+# ╔═╡ 683ab2cb-d64c-4f43-9c73-d38cfe9945dc
+begin
+	sc1_sc3 = target[findall(x->0.1 ≤ x ≤ 0.25, data[:Battery])]
+	sc4_sc6 = target[findall(x->0.25 < x ≤ 0.5, data[:Battery])]
+	sc7_sc9 = target[findall(x->0.5 < x ≤ 0.8, data[:Battery])]
+
+	h1_h3 = normalize(fit(Histogram, sc1_sc3, simdec.bins), mode=:none)
+	h4_h6 = normalize(fit(Histogram, sc4_sc6, simdec.bins), mode=:none)
+	h7_h9 = normalize(fit(Histogram, sc7_sc9, simdec.bins), mode=:none)
+end
+
+# ╔═╡ 238041ef-067a-45a6-893c-c51721c762f9
+simdec_data3 = normalize(hcat(h7_h9.weights, h4_h6.weights, h1_h3.weights), 1) .* 100
+
+# ╔═╡ 24653554-e26a-4411-a00e-fe808d77b202
+groupedbar(simdec_data3, bar_position=:stack, bar_width=1, label=false, c=[reds[2] yellows[2] blues[2]],size=(700,400))
+
+# ╔═╡ 38f7607a-e8aa-469f-8b48-84e26eea3f3a
+bar(h1_h3.weights, bar_width=1.0, c=blues[2])
+
+# ╔═╡ 891a6912-c5f5-427f-94b7-3f0144255a2b
+bar(h4_h6.weights, bar_width=1.0, c=yellows[2])
+
+# ╔═╡ be1ed990-ec91-45cf-8290-7b6983e7968e
+bar(h7_h9.weights, bar_width=1.0, c=reds[2])
+
 # ╔═╡ cd045c4b-5264-465a-97e7-e323fbda815d
 function Plots.plot(simdec::SimDec;
 					title="",
-					xlabel="",
+					xlabel="target",
 					ylabel="probability",
 					color=revcolors,
 					linecolor=length(simdec.bins) ≥ 150 ? nothing : :black)
@@ -181,88 +270,13 @@ end
 # ╔═╡ d9fde1c5-9f82-4869-93fa-8c31d3e7c770
 begin
 	plot(size=(700,350), margin=2Plots.mm)
-	histogram!(target, bins=bins, normalize=:probability, label=false)
+	histogram!(simdec.target, bins=simdec.bins, normalize=:probability, label=false)
 	xlabel!("flying range (km)")
 	ylabel!("probability")
 end
 
-# ╔═╡ afdefeea-88b4-4a9d-8852-9b1c6bfd994c
-md"""
-# Notes
-"""
-
-# ╔═╡ 59a06aa1-551a-4e70-bb2b-8e625b86fc28
-md"""
-- x-axis bins
-- edge color?
-- sensitivity indices (works with properly randomized data) (NOTE)
-- editable talbe (Decomposition set-up)
-- rename states
-- min/max automatic (but change threshold)
-- add/remove state (low, medium, high)
-- dropdown for 'target'
-- dropdown for 'variable' for decomposition (2 or 3 variables, sorted by influence indices)
-- checkbox 'auto' or 'manual' (nvm, pre-filled then user can edit it)
-- 
-"""
-
-# ╔═╡ c5ec4f89-455a-463d-a911-3f75f7f347ad
-md"""
-| x | y |
-| :-- | :--|
-| 10 | $(@bind y NumberField(0:100, default=20)) |
-"""
-
-# ╔═╡ cf12f890-7fc9-4dd9-b102-cdd702740bbc
-md"""
-# Debug
-"""
-
-# ╔═╡ 683ab2cb-d64c-4f43-9c73-d38cfe9945dc
-begin
-	sc1_sc3 = target[findall(x->0.1 ≤ x ≤ 0.25, data[:Battery])]
-	sc4_sc6 = target[findall(x->0.25 < x ≤ 0.5, data[:Battery])]
-	sc7_sc9 = target[findall(x->0.5 < x ≤ 0.8, data[:Battery])]
-
-	h1_h3 = normalize(fit(Histogram, sc1_sc3, bins), mode=:none)
-	h4_h6 = normalize(fit(Histogram, sc4_sc6, bins), mode=:none)
-	h7_h9 = normalize(fit(Histogram, sc7_sc9, bins), mode=:none)
-end
-
-# ╔═╡ ecdac900-0070-4781-b7d0-35c0994e4f21
-h1_h3
-
-# ╔═╡ 238041ef-067a-45a6-893c-c51721c762f9
-simdec_data3 = normalize(hcat(h7_h9.weights, h4_h6.weights, h1_h3.weights), 1) .* 100
-
-# ╔═╡ 24653554-e26a-4411-a00e-fe808d77b202
-groupedbar(simdec_data3, bar_position=:stack, bar_width=1, label=false, c=[reds[2] yellows[2] blues[2]],size=(700,400))
-
-# ╔═╡ 38f7607a-e8aa-469f-8b48-84e26eea3f3a
-bar(h1_h3.weights, bar_width=1.0, c=blues[2])
-
-# ╔═╡ 891a6912-c5f5-427f-94b7-3f0144255a2b
-bar(h4_h6.weights, bar_width=1.0, c=yellows[2])
-
-# ╔═╡ be1ed990-ec91-45cf-8290-7b6983e7968e
-bar(h7_h9.weights, bar_width=1.0, c=reds[2])
-
-# ╔═╡ 8e9de3c4-5d56-4ad4-92f5-e867e5971ddb
-md"""
-# Utilities
-"""
-
-# ╔═╡ 98dfd986-6b40-405f-ae21-e1857ea0a2dc
-percent_normalize(X) = normalize(X, 1) .* 100
-
-# ╔═╡ 1f2418d5-0d88-44fb-9971-9fe418e0a76f
-simdec_data = percent_normalize(hcat(map(h->h.weights, H)...));
-
-# ╔═╡ f941d4ac-199a-4ad5-bd8c-f653bb979301
-simdec = SimDec(simdec_data, bins);
-
 # ╔═╡ 32662992-229d-4d56-9240-51a1c24feaab
-plot(simdec; xlabel="flying range (km)")
+plot(simdec) # ; xlabel="flying range (km)")
 
 # ╔═╡ 01f4a641-7566-4207-a4e6-ddffdcfc7bbb
 rdmin(X) = round(Int, minimum(X))
@@ -276,21 +290,25 @@ rdmax(X) = round(Int, maximum(X))
 # ╔═╡ 60d9c2d8-c8cf-4861-b5a4-0e5eb87ec407
 rdprob(x, X) = Int(round(length(x) / length(X) * 100, digits=0))
 
-# ╔═╡ e584fdd9-8988-4cf8-a9b5-37c99cabe7c5
-# |       |          |   |   | Output Summary | | | 
-md"""
-| Color | Scenario | Energy | Power | min | mean | max | probability |
-| :---: | :------- | :--- | :--- | --: | ---: | --: | ----------: |
-| $(blues[1]) | sc1 |          | existing   | $(rdmin(sc1)) | $(rdmean(sc1)) | $(rdmax(sc1)) | $(rdprob(sc1, target))% |
-| $(blues[2]) | sc2 | existing | under dev. | $(rdmin(sc2)) | $(rdmean(sc2)) | $(rdmax(sc2)) | $(rdprob(sc2, target))% |
-| $(blues[3]) | sc3 |          | futuristic | $(rdmin(sc3)) | $(rdmean(sc3)) | $(rdmax(sc3)) | $(rdprob(sc3, target))% |
-| $(yellows[1]) | sc4 |           | existing   | $(rdmin(sc4)) | $(rdmean(sc4)) | $(rdmax(sc4)) | $(rdprob(sc4, target))% |
-| $(yellows[2]) | sc5 | near-term possible | under dev. | $(rdmin(sc5)) | $(rdmean(sc5)) | $(rdmax(sc5)) | $(rdprob(sc5, target))% |
-| $(yellows[3]) | sc6 |           | futuristic | $(rdmin(sc6)) | $(rdmean(sc6)) | $(rdmax(sc6)) | $(rdprob(sc6, target))% |
-| $(reds[1]) | sc7 |                | existing   | $(rdmin(sc7)) | $(rdmean(sc7)) | $(rdmax(sc7)) | $(rdprob(sc7, target))% |
-| $(reds[2]) | sc8 | on the horizon | under dev. | $(rdmin(sc8)) | $(rdmean(sc8)) | $(rdmax(sc8)) | $(rdprob(sc8, target))% |
-| $(reds[3]) | sc9 |                | futuristic | $(rdmin(sc9)) | $(rdmean(sc9)) | $(rdmax(sc9)) | $(rdprob(sc9, target))% |
-"""
+# ╔═╡ 76d57e8d-ebcf-46e0-ad88-7531ca5847d1
+function table(simdec::SimDec)
+	md"""
+	| Color | Scenario | Energy | Power | min | mean | max | probability |
+	| :---: | :------- | :--- | :--- | --: | ---: | --: | ----------: |
+	| $(blues[1]) | sc1 |          | existing   | $(rdmin(simdec.states.values[1])) | $(rdmean(simdec.states.values[1])) | $(rdmax(simdec.states.values[1])) | $(rdprob(simdec.states.values[1], simdec.target))% |
+	| $(blues[2]) | sc2 | existing | under dev. | $(rdmin(simdec.states.values[2])) | $(rdmean(simdec.states.values[2])) | $(rdmax(simdec.states.values[2])) | $(rdprob(simdec.states.values[2], simdec.target))% |
+	| $(blues[3]) | sc3 |          | futuristic | $(rdmin(simdec.states.values[3])) | $(rdmean(simdec.states.values[3])) | $(rdmax(simdec.states.values[3])) | $(rdprob(simdec.states.values[3], simdec.target))% |
+	| $(yellows[1]) | sc4 |           | existing   | $(rdmin(simdec.states.values[4])) | $(rdmean(simdec.states.values[4])) | $(rdmax(simdec.states.values[4])) | $(rdprob(simdec.states.values[4], simdec.target))% |
+	| $(yellows[2]) | sc5 | near-term possible | under dev. | $(rdmin(simdec.states.values[5])) | $(rdmean(simdec.states.values[5])) | $(rdmax(simdec.states.values[5])) | $(rdprob(simdec.states.values[5], simdec.target))% |
+	| $(yellows[3]) | sc6 |           | futuristic | $(rdmin(simdec.states.values[6])) | $(rdmean(simdec.states.values[6])) | $(rdmax(simdec.states.values[6])) | $(rdprob(simdec.states.values[6], simdec.target))% |
+	| $(reds[1]) | sc7 |                | existing   | $(rdmin(simdec.states.values[7])) | $(rdmean(simdec.states.values[7])) | $(rdmax(simdec.states.values[7])) | $(rdprob(simdec.states.values[7], simdec.target))% |
+	| $(reds[2]) | sc8 | on the horizon | under dev. | $(rdmin(simdec.states.values[8])) | $(rdmean(simdec.states.values[8])) | $(rdmax(simdec.states.values[8])) | $(rdprob(simdec.states.values[8], simdec.target))% |
+	| $(reds[3]) | sc9 |                | futuristic | $(rdmin(simdec.states.values[9])) | $(rdmean(simdec.states.values[9])) | $(rdmax(simdec.states.values[9])) | $(rdprob(simdec.states.values[9], simdec.target))% |
+	"""
+end
+
+# ╔═╡ 7f76d0b4-a432-4994-8b18-09cc0a2faddd
+table(simdec)
 
 # ╔═╡ 034004c1-6666-45d3-a804-5b7c6196d467
 begin
@@ -381,8 +399,9 @@ StatsPlots = "~0.15.4"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.7.1"
+julia_version = "1.9.2"
 manifest_format = "2.0"
+project_hash = "e874587fc91baa5621418a97bc4d0e80a264f53e"
 
 [[deps.AbstractFFTs]]
 deps = ["ChainRulesCore", "LinearAlgebra"]
@@ -404,6 +423,7 @@ version = "3.5.0"
 
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
+version = "1.1.1"
 
 [[deps.Arpack]]
 deps = ["Arpack_jll", "Libdl", "LinearAlgebra", "Logging"]
@@ -465,10 +485,14 @@ uuid = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
 version = "1.15.7"
 
 [[deps.ChangesOfVariables]]
-deps = ["ChainRulesCore", "LinearAlgebra", "Test"]
+deps = ["LinearAlgebra", "Test"]
 git-tree-sha1 = "844b061c104c408b24537482469400af6075aae4"
 uuid = "9e997f8a-9a97-42d5-a9f1-ce6bfc15e2c0"
 version = "0.1.5"
+weakdeps = ["ChainRulesCore"]
+
+    [deps.ChangesOfVariables.extensions]
+    ChainRulesCoreExt = "ChainRulesCore"
 
 [[deps.Clustering]]
 deps = ["Distances", "LinearAlgebra", "NearestNeighbors", "Printf", "Random", "SparseArrays", "Statistics", "StatsBase"]
@@ -515,6 +539,7 @@ version = "4.6.0"
 [[deps.CompilerSupportLibraries_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "e66e0078-7015-5450-92f7-15fbd957f2ae"
+version = "1.0.5+0"
 
 [[deps.Contour]]
 git-tree-sha1 = "d05d9e7b7aedff4e5b51a029dced05cfb6125781"
@@ -549,7 +574,9 @@ uuid = "ade2ca70-3891-5945-98fb-dc099432e06a"
 
 [[deps.DelimitedFiles]]
 deps = ["Mmap"]
+git-tree-sha1 = "9e2f36d3c96a820c678f2f1f1782582fcf685bae"
 uuid = "8bb1440f-4735-579b-a4ab-409b98df4dab"
+version = "1.9.1"
 
 [[deps.DensityInterface]]
 deps = ["InverseFunctions", "Test"]
@@ -580,14 +607,21 @@ uuid = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
 version = "0.9.3"
 
 [[deps.Downloads]]
-deps = ["ArgTools", "LibCURL", "NetworkOptions"]
+deps = ["ArgTools", "FileWatching", "LibCURL", "NetworkOptions"]
 uuid = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
+version = "1.6.0"
 
 [[deps.DualNumbers]]
 deps = ["Calculus", "NaNMath", "SpecialFunctions"]
 git-tree-sha1 = "5837a837389fccf076445fce071c8ddaea35a566"
 uuid = "fa6b7ba4-c1ee-5f82-b5fc-ecf0adba8f74"
 version = "0.6.8"
+
+[[deps.EpollShim_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "8e9441ee83492030ace98f9789a654a6d0b1f643"
+uuid = "2702e6a9-849d-5ed8-8c21-79e8b8f9ee43"
+version = "0.0.20230411+0"
 
 [[deps.Expat_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -624,6 +658,9 @@ deps = ["Compat", "Dates", "Mmap", "Printf", "Test", "UUIDs"]
 git-tree-sha1 = "e27c4ebe80e8699540f2d6c805cc12203b614f12"
 uuid = "48062228-2e41-5def-b9a4-89aafe57970f"
 version = "0.9.20"
+
+[[deps.FileWatching]]
+uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
 
 [[deps.FillArrays]]
 deps = ["LinearAlgebra", "Random", "SparseArrays", "Statistics"]
@@ -851,10 +888,12 @@ uuid = "4af54fe1-eca0-43a8-85a7-787d91b784e3"
 [[deps.LibCURL]]
 deps = ["LibCURL_jll", "MozillaCACerts_jll"]
 uuid = "b27032c2-a3e7-50c8-80cd-2d36dbcbfd21"
+version = "0.6.3"
 
 [[deps.LibCURL_jll]]
 deps = ["Artifacts", "LibSSH2_jll", "Libdl", "MbedTLS_jll", "Zlib_jll", "nghttp2_jll"]
 uuid = "deac9b47-8bc7-5906-a0fe-35ac56dc84c0"
+version = "7.84.0+0"
 
 [[deps.LibGit2]]
 deps = ["Base64", "NetworkOptions", "Printf", "SHA"]
@@ -863,6 +902,7 @@ uuid = "76f85450-5226-5b5a-8eaa-529ad045b433"
 [[deps.LibSSH2_jll]]
 deps = ["Artifacts", "Libdl", "MbedTLS_jll"]
 uuid = "29816b5a-b9ab-546f-933c-edad1886dfa8"
+version = "1.10.2+0"
 
 [[deps.Libdl]]
 uuid = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
@@ -916,14 +956,20 @@ uuid = "38a345b3-de98-5d2b-a5d3-14cd9215e700"
 version = "2.36.0+0"
 
 [[deps.LinearAlgebra]]
-deps = ["Libdl", "libblastrampoline_jll"]
+deps = ["Libdl", "OpenBLAS_jll", "libblastrampoline_jll"]
 uuid = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 
 [[deps.LogExpFunctions]]
-deps = ["ChainRulesCore", "ChangesOfVariables", "DocStringExtensions", "InverseFunctions", "IrrationalConstants", "LinearAlgebra"]
+deps = ["DocStringExtensions", "IrrationalConstants", "LinearAlgebra"]
 git-tree-sha1 = "680e733c3a0a9cea9e935c8c2184aea6a63fa0b5"
 uuid = "2ab3a3ac-af41-5b50-aa03-7779005ae688"
 version = "0.3.21"
+weakdeps = ["ChainRulesCore", "ChangesOfVariables", "InverseFunctions"]
+
+    [deps.LogExpFunctions.extensions]
+    ChainRulesCoreExt = "ChainRulesCore"
+    ChangesOfVariablesExt = "ChangesOfVariables"
+    InverseFunctionsExt = "InverseFunctions"
 
 [[deps.Logging]]
 uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
@@ -964,6 +1010,7 @@ version = "1.1.7"
 [[deps.MbedTLS_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "c8ffd9c3-330d-5841-b78e-0817d7145fa1"
+version = "2.28.2+0"
 
 [[deps.Measures]]
 git-tree-sha1 = "c13304c81eec1ed3af7fc20e75fb6b26092a1102"
@@ -981,6 +1028,7 @@ uuid = "a63ad114-7e13-5084-954f-fe012c677804"
 
 [[deps.MozillaCACerts_jll]]
 uuid = "14a3606d-f60d-562e-9121-12d972cd8159"
+version = "2022.10.11"
 
 [[deps.MultivariateStats]]
 deps = ["Arpack", "LinearAlgebra", "SparseArrays", "Statistics", "StatsAPI", "StatsBase"]
@@ -1002,6 +1050,7 @@ version = "0.4.13"
 
 [[deps.NetworkOptions]]
 uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
+version = "1.2.0"
 
 [[deps.Observables]]
 git-tree-sha1 = "6862738f9796b3edc1c09d0890afce4eca9e7e93"
@@ -1023,10 +1072,12 @@ version = "1.3.5+1"
 [[deps.OpenBLAS_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl"]
 uuid = "4536629a-c528-5b80-bd46-f80d51c5b363"
+version = "0.3.21+4"
 
 [[deps.OpenLibm_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "05823500-19ac-5b8b-9628-191a04bc5112"
+version = "0.8.1+0"
 
 [[deps.OpenSSL]]
 deps = ["BitFlags", "Dates", "MozillaCACerts_jll", "OpenSSL_jll", "Sockets"]
@@ -1060,6 +1111,7 @@ version = "1.4.1"
 [[deps.PCRE2_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "efcefdf7-47ab-520b-bdef-62a2eaa19f15"
+version = "10.42.0+0"
 
 [[deps.PDMats]]
 deps = ["LinearAlgebra", "SparseArrays", "SuiteSparse"]
@@ -1085,8 +1137,9 @@ uuid = "30392449-352a-5448-841d-b1acce4e97dc"
 version = "0.40.1+0"
 
 [[deps.Pkg]]
-deps = ["Artifacts", "Dates", "Downloads", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "REPL", "Random", "SHA", "Serialization", "TOML", "Tar", "UUIDs", "p7zip_jll"]
+deps = ["Artifacts", "Dates", "Downloads", "FileWatching", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "REPL", "Random", "SHA", "Serialization", "TOML", "Tar", "UUIDs", "p7zip_jll"]
 uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
+version = "1.9.2"
 
 [[deps.PlotThemes]]
 deps = ["PlotUtils", "Statistics"]
@@ -1197,6 +1250,7 @@ version = "0.4.0+0"
 
 [[deps.SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
+version = "0.7.0"
 
 [[deps.Scratch]]
 deps = ["Dates"]
@@ -1244,7 +1298,7 @@ uuid = "a2af1166-a08f-5f64-846c-94a0d3cef48c"
 version = "1.1.0"
 
 [[deps.SparseArrays]]
-deps = ["LinearAlgebra", "Random"]
+deps = ["Libdl", "LinearAlgebra", "Random", "Serialization", "SuiteSparse_jll"]
 uuid = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 
 [[deps.SpecialFunctions]]
@@ -1267,6 +1321,7 @@ version = "1.4.0"
 [[deps.Statistics]]
 deps = ["LinearAlgebra", "SparseArrays"]
 uuid = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+version = "1.9.0"
 
 [[deps.StatsAPI]]
 deps = ["LinearAlgebra"]
@@ -1296,9 +1351,15 @@ version = "0.15.4"
 deps = ["Libdl", "LinearAlgebra", "Serialization", "SparseArrays"]
 uuid = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
 
+[[deps.SuiteSparse_jll]]
+deps = ["Artifacts", "Libdl", "Pkg", "libblastrampoline_jll"]
+uuid = "bea87d4a-7f5b-5778-9afe-8cc45184846c"
+version = "5.10.1+6"
+
 [[deps.TOML]]
 deps = ["Dates"]
 uuid = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+version = "1.0.3"
 
 [[deps.TableOperations]]
 deps = ["SentinelArrays", "Tables", "Test"]
@@ -1321,6 +1382,7 @@ version = "1.10.0"
 [[deps.Tar]]
 deps = ["ArgTools", "SHA"]
 uuid = "a4e569a6-e804-4fa4-b0f3-eef7a1d5b13e"
+version = "1.10.0"
 
 [[deps.TensorCore]]
 deps = ["LinearAlgebra"]
@@ -1367,7 +1429,7 @@ uuid = "41fe7b60-77ed-43a1-b4f0-825fd5a5650d"
 version = "0.2.0"
 
 [[deps.Wayland_jll]]
-deps = ["Artifacts", "Expat_jll", "JLLWrappers", "Libdl", "Libffi_jll", "Pkg", "XML2_jll"]
+deps = ["Artifacts", "EpollShim_jll", "Expat_jll", "JLLWrappers", "Libdl", "Libffi_jll", "Pkg", "XML2_jll"]
 git-tree-sha1 = "ed8d92d9774b077c53e1da50fd81a36af3744c1c"
 uuid = "a2964d1f-97da-50d4-b82a-358c7fce9d89"
 version = "1.21.0+0"
@@ -1542,6 +1604,7 @@ version = "1.4.0+3"
 [[deps.Zlib_jll]]
 deps = ["Libdl"]
 uuid = "83775a58-1f1d-513f-b197-d71354ab007a"
+version = "1.2.13+0"
 
 [[deps.Zstd_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1568,8 +1631,9 @@ uuid = "0ac62f75-1d6f-5e53-bd7c-93b484bb37c0"
 version = "0.15.1+0"
 
 [[deps.libblastrampoline_jll]]
-deps = ["Artifacts", "Libdl", "OpenBLAS_jll"]
+deps = ["Artifacts", "Libdl"]
 uuid = "8e850b90-86db-534c-a0d3-1478176c7d93"
+version = "5.8.0+0"
 
 [[deps.libfdk_aac_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1592,10 +1656,12 @@ version = "1.3.7+1"
 [[deps.nghttp2_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "8e850ede-7688-5339-a07c-302acd2aaf8d"
+version = "1.48.0+0"
 
 [[deps.p7zip_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "3f19e933-33d8-53b3-aaab-bd5110c3b7a0"
+version = "17.4.0+0"
 
 [[deps.x264_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1626,8 +1692,8 @@ version = "1.4.1+0"
 # ╠═42cd65d2-b812-4ec4-90f3-a8278c1f9545
 # ╠═34436834-562d-4b00-9e6c-2aa61f646926
 # ╠═d2d87e99-0a88-4228-8663-dc72aac569a7
+# ╠═d56f84c4-b554-4ac6-9374-5dbbae45d304
 # ╠═a5cbc409-0729-4368-8af1-8cd9525951fa
-# ╠═955b1d3e-9358-4b54-85d7-deb07d6fa27c
 # ╠═d9fde1c5-9f82-4869-93fa-8c31d3e7c770
 # ╟─668c309c-53ee-48fd-808b-9fbd43be5403
 # ╠═5c77f2d3-e14a-4f6c-a18b-bea0b4a09bbe
@@ -1636,27 +1702,26 @@ version = "1.4.1+0"
 # ╠═a59e789d-33d7-4aef-a3b8-808024670aa5
 # ╠═bde8f656-d177-43b3-899f-e2486922e5b0
 # ╟─5b79791a-f02a-4361-84db-a24e4308d26d
+# ╠═4a1c8621-0dc3-41ca-a1a0-bc4b9c548a31
 # ╠═3ae4c85b-78c5-422c-b39a-d6da4f68aed8
-# ╠═45ed938a-41c2-43f0-a46f-170b7f945ec6
-# ╠═bbff5122-e5ef-4f6a-9595-8dee2f7eba06
+# ╠═b6870806-a954-4f63-b4cd-0e5e72e2b908
+# ╠═0e1814e3-4d80-40af-bb2b-27c260af0b38
+# ╠═db36a029-9ed7-4dda-adbe-dc15238960c1
 # ╟─5ad38384-4169-423c-b9ba-c20934fb1bde
 # ╠═c72d500d-b4a9-4bde-95f2-7cec843bccb7
-# ╠═1f2418d5-0d88-44fb-9971-9fe418e0a76f
-# ╠═e13ef85d-76a2-4f1e-8ef8-4451fc93945d
 # ╠═f941d4ac-199a-4ad5-bd8c-f653bb979301
 # ╟─cd239895-6ea1-473b-b28f-207571d9e593
 # ╠═a9e4f007-0b2b-4022-8cf8-bf5f50e9dbde
 # ╠═32662992-229d-4d56-9240-51a1c24feaab
-# ╠═ecdac900-0070-4781-b7d0-35c0994e4f21
-# ╟─e584fdd9-8988-4cf8-a9b5-37c99cabe7c5
+# ╟─76d57e8d-ebcf-46e0-ad88-7531ca5847d1
+# ╠═7f76d0b4-a432-4994-8b18-09cc0a2faddd
 # ╠═20acbd9d-2ea5-4965-85d4-5829b2dff26b
-# ╠═acc3c2dc-3945-4f12-ba71-91e74fa79e2f
 # ╠═249a387a-d8da-44ba-a76e-9d54dd01d6db
 # ╟─a0adf9f6-8b43-4588-99fd-f3c96112d935
 # ╠═cd045c4b-5264-465a-97e7-e323fbda815d
 # ╟─afdefeea-88b4-4a9d-8852-9b1c6bfd994c
-# ╠═59a06aa1-551a-4e70-bb2b-8e625b86fc28
-# ╠═c5ec4f89-455a-463d-a911-3f75f7f347ad
+# ╟─59a06aa1-551a-4e70-bb2b-8e625b86fc28
+# ╟─c5ec4f89-455a-463d-a911-3f75f7f347ad
 # ╟─cf12f890-7fc9-4dd9-b102-cdd702740bbc
 # ╠═683ab2cb-d64c-4f43-9c73-d38cfe9945dc
 # ╠═238041ef-067a-45a6-893c-c51721c762f9
