@@ -1,3 +1,8 @@
+# SimulationDecomposition.jl
+
+[![Pluto](https://img.shields.io/badge/SimDec-notebook-389826)](https://htmlview.glitch.me/?https://github.com/Simulation-Decomposition/SimulationDecomposition.jl/blob/main/notebooks/simdec.html)
+
+
 > **Warning**
 > This library is under active development and things can change at anytime! Suggestions and help are greatly appreciated.
 
